@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RuuviTag Sniffer 2.0</title>
+  <title>RuuviTag Sniffer 1.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
@@ -101,6 +101,18 @@
           <button class="btn-primary" type="submit">Save Configuration</button>
         </form>
       </section>
+
+      <!-- System Logs Section -->
+      <section class="glass-panel log-panel">
+        <h2>System Logs</h2>
+        <div class="terminal" id="logs-terminal">
+          <ul id="logs-list">
+            {{#logs}}
+              <li class="log-{{level}}"><span class="log-time">[{{timestamp}}]</span> {{message}}</li>
+            {{/logs}}
+          </ul>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -109,7 +121,16 @@
     const tagsGrid = document.getElementById('tags-grid');
     const emptyState = document.getElementById('empty-state');
 
-    evtSource.onmessage = function(event) {
+    // Auto-scroll logic helper
+    const scrollToBottomLogs = () => {
+      const term = document.getElementById('logs-terminal');
+      term.scrollTop = term.scrollHeight;
+    };
+
+    // Scroll initialized logs to bottom on load
+    window.addEventListener('DOMContentLoaded', scrollToBottomLogs);
+
+    evtSource.addEventListener('tag', function(event) {
       const data = JSON.parse(event.data);
       
       // Hide empty state and show grid
@@ -155,7 +176,27 @@
         document.getElementById('bat-' + data.id).textContent = data.battery + ' V';
         document.getElementById('time-' + data.id).textContent = 'Last updated: ' + data.timeFormatted;
       }
-    };
+    });
+
+    evtSource.addEventListener('log', function(event) {
+      const data = JSON.parse(event.data);
+      const list = document.getElementById('logs-list');
+      const li = document.createElement('li');
+      li.className = 'log-' + data.level;
+      
+      // Basic escaping to prevent HTML injection
+      const safeMsg = data.message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      
+      li.innerHTML = '<span class="log-time">[' + data.timestamp + ']</span> ' + safeMsg;
+      list.appendChild(li);
+      
+      scrollToBottomLogs();
+
+      // Maintain up to 1000 items on client side
+      while (list.children.length > 1000) {
+        list.removeChild(list.firstChild);
+      }
+    });
   </script>
 </body>
 </html>

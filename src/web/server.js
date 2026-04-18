@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { getConfig, saveConfig } from '../services/config.js';
 import { getLatestTagsData, snifferEvents } from '../services/sniffer.js';
 import { startSender } from '../services/sender.js';
+import { getLogs, loggerEvents } from '../services/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,7 @@ export function initWebServer() {
   app.get('/', (req, res) => {
     const currentConfig = getConfig();
     const tags = getLatestTagsData();
+    const rawLogs = getLogs();
     
     // Format timestamp for display
     const formattedTags = tags.map(tag => ({
@@ -51,6 +53,7 @@ export function initWebServer() {
       config: currentConfig,
       tags: formattedTags,
       hasTags: formattedTags.length > 0,
+      logs: rawLogs,
       dryRunChecked: currentConfig.dryRun ? 'checked' : ''
     });
   });
@@ -72,13 +75,21 @@ export function initWebServer() {
         battery: (measurement.battery / 1000).toFixed(2),
         timeFormatted: new Date(measurement.timestamp).toLocaleTimeString(),
       };
+      res.write(`event: tag\n`);
       res.write(`data: ${JSON.stringify(formatted)}\n\n`);
     };
 
+    const onLog = (logEntry) => {
+      res.write(`event: log\n`);
+      res.write(`data: ${JSON.stringify(logEntry)}\n\n`);
+    };
+
     snifferEvents.on('updated', onUpdate);
+    loggerEvents.on('newLog', onLog);
 
     req.on('close', () => {
       snifferEvents.off('updated', onUpdate);
+      loggerEvents.off('newLog', onLog);
       res.end();
     });
   });

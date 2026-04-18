@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   interval: 5, // minutes
   username: 'admin',
   password: 'admin',
-  dryRun: false,
+  dryRun: true,
   port: 8005,
 };
 

@@ -1,64 +1,68 @@
 import axios from 'axios';
 import { getConfig } from './config.js';
-import { getLatestTagsData } from './sniffer.js';
+import { snifferEvents } from './sniffer.js';
+import { addLog } from './logger.js';
 
-let intervalTimer = null;
+// Map to track when each tag was last sent
+// Key: mac, Value: timestamp (Date.now())
+const lastSentMap = new Map();
 
-// Helper to start or restart the timer based on config
+// Helper flag so we don't spam duplicate bindings
+let isRunning = false;
+
 export function startSender() {
-  if (intervalTimer) {
-    clearInterval(intervalTimer);
-  }
-
-  const config = getConfig();
-  const intervalMs = config.interval * 60 * 1000;
-
-  console.log(`[SENDER] Starting sender loop with interval: ${config.interval} minutes`);
+  if (isRunning) return;
   
-  // Initial run after interval
-  intervalTimer = setInterval(processPush, intervalMs);
+  const config = getConfig();
+  addLog(`[SENDER] Event-driven sender started with interval constraint: ${config.interval} minutes`);
+  
+  snifferEvents.on('updated', handleTagUpdate);
+  isRunning = true;
 }
 
 export function stopSender() {
-  if (intervalTimer) {
-    clearInterval(intervalTimer);
-    intervalTimer = null;
-    console.log('[SENDER] Stopped sender loop');
-  }
+  if (!isRunning) return;
+  
+  snifferEvents.off('updated', handleTagUpdate);
+  isRunning = false;
+  addLog('[SENDER] Stopped sender event listener');
 }
 
-async function processPush() {
+async function handleTagUpdate(tagData) {
   const config = getConfig();
-  const tagsData = getLatestTagsData();
+  const intervalMs = config.interval * 60 * 1000;
+  const now = Date.now();
+  const lastSent = lastSentMap.get(tagData.id) || 0;
 
-  if (tagsData.length === 0) {
-    console.log('[SENDER] No tag data available to send.');
-    return;
-  }
+  // Check if enough time has passed since this specific tag was last sent
+  // (or if it has never been sent, in which case lastSent is 0)
+  if (now - lastSent >= intervalMs) {
+    if (config.dryRun) {
+      addLog(`[DRY RUN - SENDER] Would have sent data for newly discovered or updated tag MAC: ${tagData.id}`);
+      lastSentMap.set(tagData.id, now);
+      return;
+    }
 
-  if (config.dryRun) {
-    console.log('[DRY RUN - SENDER] Would have sent the following data:');
-    console.log(JSON.stringify(tagsData, null, 2));
-    return;
-  }
+    if (!config.mahtiruuviFunctionHost) {
+      addLog('[SENDER] Cannot send data: "mahtiruuviFunctionHost" is not configured.', 'error');
+      // Intentionally NOT updating lastSentMap so it retries as soon as host is configured
+      return;
+    }
 
-  if (!config.mahtiruuviFunctionHost) {
-    console.log('[SENDER] Cannot send data: "mahtiruuviFunctionHost" is not configured.');
-    return;
-  }
+    // Set it immediately to prevent duplicate concurrent triggers for the same tag
+    lastSentMap.set(tagData.id, now);
 
-  for (const tag of tagsData) {
     try {
       const payload = {
-        mac: tag.id,
-        temperature: tag.temperature,
-        pressure: tag.pressure,
-        humidity: tag.humidity,
-        battery: tag.battery,
-        timestamp: tag.timestamp,
+        mac: tagData.id,
+        temperature: tagData.temperature,
+        pressure: tagData.pressure,
+        humidity: tagData.humidity,
+        battery: tagData.battery,
+        timestamp: tagData.timestamp,
       };
 
-      const url = `http://${config.mahtiruuviFunctionHost}/tagmeasurement/${tag.id}`;
+      const url = `http://${config.mahtiruuviFunctionHost}/tagmeasurement/${tagData.id}`;
       
       await axios.post(url, payload, {
         headers: {
@@ -66,9 +70,11 @@ async function processPush() {
           'Content-Type': 'application/json',
         }
       });
-      console.log(`[SENDER] Successfully sent data for MAC: ${tag.id}`);
+      addLog(`[SENDER] Successfully sent data for MAC: ${tagData.id}`);
     } catch (error) {
-      console.error(`[SENDER] Failed to send data for MAC: ${tag.id}. Error: ${error.message}`);
+      addLog(`[SENDER] Failed to send data for MAC: ${tagData.id}. Error: ${error.message}`, 'error');
+      // If it fails, maybe we want to reset the timer to try again earlier? 
+      // For now, it will just wait for the next interval to retry.
     }
   }
 }
