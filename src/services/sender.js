@@ -62,7 +62,7 @@ async function handleTagUpdate(tagData) {
         timestamp: tagData.timestamp,
       };
 
-      const url = `http://${config.mahtiruuviFunctionHost}/tagmeasurement/${tagData.id}`;
+      const url = config.mahtiruuviFunctionHost;
       
       await axios.post(url, payload, {
         headers: {
