@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RuuviTag Sniffer 2.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+  <div class="blob-c blob-1"></div>
+  <div class="blob-c blob-2"></div>
+  
+  <div class="container">
+    <header class="glass-panel">
+      <h1>📡 RuuviTag Sniffer <span>1.0</span></h1>
+      <p>Configure and monitor your BLE sensors with ease.</p>
+    </header>
+
+    <main class="grid">
+      <!-- Tag Data Section -->
+      <section class="glass-panel data-panel">
+        <h2>Currently Sniffed Tags</h2>
+        <p class="subtitle">Latest data from your local RuuviTags</p>
+        
+        <div id="tags-grid" class="tags-grid" style="{{^hasTags}}display: none;{{/hasTags}}">
+          {{#tags}}
+            <div class="tag-card" id="tag-{{id}}">
+              <h3>{{id}}</h3>
+              <div class="metric">
+                <span class="label">Temp</span>
+                <span class="value temp" id="temp-{{id}}">{{temperature}}°C</span>
+              </div>
+              <div class="metric">
+                <span class="label">Hum</span>
+                <span class="value" id="hum-{{id}}">{{humidity}}%</span>
+              </div>
+              <div class="metric">
+                <span class="label">Pres</span>
+                <span class="value" id="pres-{{id}}">{{pressure}} hPa</span>
+              </div>
+              <div class="metric">
+                <span class="label">Bat</span>
+                <span class="value" id="bat-{{id}}">{{battery}} V</span>
+              </div>
+              <div class="metric-footer" id="time-{{id}}">
+                Last updated: {{timeFormatted}}
+              </div>
+            </div>
+          {{/tags}}
+        </div>
+        
+        <div id="empty-state" class="empty-state" style="{{#hasTags}}display: none;{{/hasTags}}">
+          <p>No tags sniffed yet. Make sure Bluetooth is enabled and tags are broadcasting.</p>
+          <div class="spinner"></div>
+        </div>
+      </section>
+
+      <!-- Configuration Section -->
+      <section class="glass-panel config-panel">
+        <h2>Configuration</h2>
+        <form action="/update-config" method="POST">
+          <div class="form-group">
+            <label for="mahtiruuviFunctionHost">Destination API Host</label>
+            <input type="text" id="mahtiruuviFunctionHost" name="mahtiruuviFunctionHost" value="{{config.mahtiruuviFunctionHost}}" placeholder="e.g. api.ruuvi.local" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="apiToken">API Bearer Token</label>
+            <input type="text" id="apiToken" name="apiToken" value="{{config.apiToken}}" placeholder="Your secret token..." required>
+          </div>
+          
+          <div class="form-group">
+            <label for="interval">Update Interval (Minutes)</label>
+            <input type="number" id="interval" name="interval" value="{{config.interval}}" min="5" max="60" required>
+            <small>Min 5, Max 60</small>
+          </div>
+
+          <div class="form-group">
+            <label>Operating Mode</label>
+            <label class="toggle-switch">
+              <input type="checkbox" name="dryRun" {{dryRunChecked}}>
+              <span class="slider"></span>
+              <span class="toggle-label">Enable Dry Run (Do not send data)</span>
+            </label>
+          </div>
+
+          <h3>Authentication</h3>
+          <p class="subtitle">Update admin panel credentials (leave password empty to keep current)</p>
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" value="{{config.username}}" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="New password (optional)">
+          </div>
+
+          <button class="btn-primary" type="submit">Save Configuration</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const evtSource = new EventSource('/stream');
+    const tagsGrid = document.getElementById('tags-grid');
+    const emptyState = document.getElementById('empty-state');
+
+    evtSource.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      
+      // Hide empty state and show grid
+      tagsGrid.style.display = 'grid';
+      emptyState.style.display = 'none';
+
+      let card = document.getElementById('tag-' + data.id);
+      
+      if (!card) {
+        // Tag doesn't exist yet in DOM, create it
+        card = document.createElement('div');
+        card.className = 'tag-card';
+        card.id = 'tag-' + data.id;
+        
+        card.innerHTML = `
+          <h3>${data.id}</h3>
+          <div class="metric">
+            <span class="label">Temp</span>
+            <span class="value temp" id="temp-${data.id}">${data.temperature}°C</span>
+          </div>
+          <div class="metric">
+            <span class="label">Hum</span>
+            <span class="value" id="hum-${data.id}">${data.humidity}%</span>
+          </div>
+          <div class="metric">
+            <span class="label">Pres</span>
+            <span class="value" id="pres-${data.id}">${data.pressure} hPa</span>
+          </div>
+          <div class="metric">
+            <span class="label">Bat</span>
+            <span class="value" id="bat-${data.id}">${data.battery} V</span>
+          </div>
+          <div class="metric-footer" id="time-${data.id}">
+            Last updated: ${data.timeFormatted}
+          </div>
+        `;
+        tagsGrid.appendChild(card);
+      } else {
+        // Update existing
+        document.getElementById('temp-' + data.id).textContent = data.temperature + '°C';
+        document.getElementById('hum-' + data.id).textContent = data.humidity + '%';
+        document.getElementById('pres-' + data.id).textContent = data.pressure + ' hPa';
+        document.getElementById('bat-' + data.id).textContent = data.battery + ' V';
+        document.getElementById('time-' + data.id).textContent = 'Last updated: ' + data.timeFormatted;
+      }
+    };
+  </script>
+</body>
+</html>
