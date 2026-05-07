@@ -97,6 +97,14 @@
 
           <button class="btn-primary" type="submit">Save Configuration</button>
         </form>
+        <script>
+          document.querySelector('form[action="/update-config"]').addEventListener('submit', function(e) {
+            const pw = document.getElementById('password').value;
+            if (pw && !confirm('Changing the password will restart the server. You will be asked to log in again. Continue?')) {
+              e.preventDefault();
+            }
+          });
+        </script>
       </section>
 
       <!-- System Logs Section -->

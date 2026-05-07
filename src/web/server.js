@@ -103,6 +103,8 @@ export function initWebServer() {
       password,
       dryRun
     } = req.body;
+    const currentConfig = getConfig();
+    const passwordChanged = password && password !== currentConfig.password;
 
     try {
       await saveConfig({
@@ -110,19 +112,16 @@ export function initWebServer() {
         mahtiruuviFunctionHost,
         interval: parseInt(interval, 10),
         username,
-        password: password ? password : undefined, // only update if provided
+        password: password ? password : currentConfig.password,
         dryRun: dryRun === 'on'
       });
-      
-      // Inform user that restart will happen and wait until basic auth 
-      // middleware has been reinitialized.
-      res.render('index', {
-        config: getConfig(),
-        tags: [],
-        hasTags: false,
-        logs: [],
-        dryRunChecked: getConfig().dryRun ? 'checked' : ''
-      });
+      res.on('finish', () => process.exit(0));
+      if (passwordChanged) {
+        res.set('WWW-Authenticate', 'Basic realm="RuuviTag Sniffer 2.0"');
+        res.status(401).send('Password changed. Please log in with your new credentials.');
+      } else {
+        res.redirect('/?success=1');
+      }
     } catch (error) {
       res.redirect('/?error=1');
     }
