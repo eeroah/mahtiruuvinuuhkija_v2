@@ -114,10 +114,15 @@ export function initWebServer() {
         dryRun: dryRun === 'on'
       });
       
-      // Update sender interval if needed
-      startSender();
-
-      res.redirect('/?success=1');
+      // Inform user that restart will happen and wait until basic auth 
+      // middleware has been reinitialized.
+      res.render('index', {
+        config: getConfig(),
+        tags: [],
+        hasTags: false,
+        logs: [],
+        dryRunChecked: getConfig().dryRun ? 'checked' : ''
+      });
     } catch (error) {
       res.redirect('/?error=1');
     }
